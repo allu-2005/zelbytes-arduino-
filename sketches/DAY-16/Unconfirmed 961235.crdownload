@@ -3,7 +3,7 @@ import requests
 import time
 
 # Your IoT Lab API key
-API_KEY = "zil_o9zqx0hsrc4qzqjnxgabcnhqh7nmjosy"
+API_KEY = "zil_cgugaupoa56o8pugokz4zyj61a8f4bsh"
 
 # IoT Lab endpoint
 URL = "https://careers.zelbytes.com/api/iot-lab/v1/telemetry"
@@ -28,7 +28,7 @@ while sample_count < 10:
     if len(values) == 3:
 
         payload = {
-            "device_id": "mridula_task8",
+            "device_id": "misha_task8",
             "temperature_c": float(values[0]),
             "humidity_pct": float(values[1]),
             "soil_moisture_pct": float(values[2])
