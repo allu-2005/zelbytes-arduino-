@@ -1,171 +1,126 @@
-/*
-  Firmware v1.0 - Auto Irrigation System
+// ESP32 Auto Irrigation Firmware v1.0
 
-  Features:
-  - Automatic irrigation based on soil moisture threshold
-  - Manual override button
-  - Serial commands:
-      STATUS
-      FORCE_ON
-      FORCE_OFF
+#define SOIL_PIN 34
+#define RELAY_PIN 26
+#define BUTTON_PIN 27
+#define LED_PIN 2
 
-  Hardware:
-  Soil Sensor AO -> A0
-  Relay IN       -> D7
-  Push Button    -> D2
-*/
+const int DRY_THRESHOLD = 600;   // Adjust after calibration
 
-#define SOIL_PIN A0
-#define RELAY_PIN 7
-#define BUTTON_PIN 2
-
-const int SOIL_THRESHOLD = 600;
-
-bool manualMode = false;
+bool manualOverride = false;
 bool pumpState = false;
 
-unsigned long lastButtonTime = 0;
-const unsigned long debounceDelay = 300;
+bool lastButtonState = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50;
 
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
+  pinMode(SOIL_PIN, INPUT);
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
 
-  digitalWrite(RELAY_PIN, HIGH);
+  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(LED_PIN, LOW);
 
-  Serial.println("=== Auto Irrigation Firmware v1.0 ===");
-  Serial.println("Commands:");
-  Serial.println("STATUS");
-  Serial.println("FORCE_ON");
-  Serial.println("FORCE_OFF");
+  Serial.println("Auto Irrigation Firmware v1.0 Started");
 }
 
 void loop()
 {
   handleButton();
+
+  // Automatic mode
+  if (!manualOverride)
+  {
+    int soilValue = analogRead(SOIL_PIN);
+
+    if (soilValue > DRY_THRESHOLD)
+      pumpState = true;      // Dry soil → Pump ON
+    else
+      pumpState = false;     // Wet soil → Pump OFF
+  }
+
+  digitalWrite(RELAY_PIN, pumpState);
+  digitalWrite(LED_PIN, pumpState);
+
   handleSerial();
-
-  int soilValue = analogRead(SOIL_PIN);
-
-  if (!manualMode)
-  {
-    autoIrrigation(soilValue);
-  }
-
-  delay(100);
 }
 
-void autoIrrigation(int soilValue)
-{
-  if (soilValue > SOIL_THRESHOLD)
-  {
-    pumpOn();
-  }
-  else
-  {
-    pumpOff();
-  }
-}
 
+// ---------- Push Button Manual Override ----------
 void handleButton()
 {
-  if (millis() - lastButtonTime < debounceDelay)
-    return;
+  bool reading = digitalRead(BUTTON_PIN);
 
-  if (digitalRead(BUTTON_PIN) == LOW)
+  if (reading != lastButtonState)
   {
-    manualMode = !manualMode;
-
-    Serial.println();
-
-    if (manualMode)
-    {
-      Serial.println("MANUAL OVERRIDE ENABLED");
-      Serial.println("Use FORCE_ON or FORCE_OFF");
-    }
-    else
-    {
-      Serial.println("AUTO MODE ENABLED");
-    }
-
-    lastButtonTime = millis();
+    lastDebounceTime = millis();
   }
+
+  if ((millis() - lastDebounceTime) > debounceDelay)
+  {
+    if (lastButtonState == HIGH && reading == LOW)
+    {
+      manualOverride = true;
+      pumpState = !pumpState;
+
+      Serial.print("Button Pressed: Pump ");
+      Serial.println(pumpState ? "ON" : "OFF");
+    }
+  }
+
+  lastButtonState = reading;
 }
 
+
+// ---------- Serial Commands ----------
 void handleSerial()
 {
-  if (!Serial.available())
-    return;
-
-  String cmd = Serial.readStringUntil('\n');
-  cmd.trim();
-
-  cmd.toUpperCase();
-
-  if (cmd == "STATUS")
+  if (Serial.available())
   {
-    printStatus();
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+
+    if (cmd == "FORCE_ON")
+    {
+      manualOverride = true;
+      pumpState = true;
+
+      Serial.println("Pump Forced ON");
+    }
+
+    else if (cmd == "FORCE_OFF")
+    {
+      manualOverride = true;
+      pumpState = false;
+
+      Serial.println("Pump Forced OFF");
+    }
+
+    else if (cmd == "STATUS")
+    {
+      int soilValue = analogRead(SOIL_PIN);
+
+      Serial.println("----- STATUS -----");
+
+      Serial.print("Mode: ");
+      Serial.println(manualOverride ? "MANUAL" : "AUTO");
+
+      Serial.print("Pump: ");
+      Serial.println(pumpState ? "ON" : "OFF");
+
+      Serial.print("Soil Value: ");
+      Serial.println(soilValue);
+    }
+
+    else if (cmd == "AUTO")
+    {
+      manualOverride = false;
+      Serial.println("Returned to AUTO mode");
+    }
   }
-  else if (cmd == "FORCE_ON")
-  {
-    manualMode = true;
-    pumpOn();
-
-    Serial.println("Pump Forced ON");
-  }
-  else if (cmd == "FORCE_OFF")
-  {
-    manualMode = true;
-    pumpOff();
-
-    Serial.println("Pump Forced OFF");
-  }
-  else
-  {
-    Serial.println("Unknown Command");
-  }
-}
-
-void printStatus()
-{
-  int soilValue = analogRead(SOIL_PIN);
-
-  Serial.println("------ STATUS ------");
-
-  Serial.print("Mode: ");
-
-  if (manualMode)
-    Serial.println("MANUAL");
-  else
-    Serial.println("AUTO");
-
-  Serial.print("Soil Reading: ");
-  Serial.println(soilValue);
-
-  Serial.print("Threshold: ");
-  Serial.println(SOIL_THRESHOLD);
-
-  Serial.print("Pump State: ");
-
-  if (pumpState)
-    Serial.println("ON");
-  else
-    Serial.println("OFF");
-
-  Serial.println("--------------------");
-}
-
-void pumpOn()
-{
-  digitalWrite(RELAY_PIN, LOW);
-  pumpState = true;
-}
-
-void pumpOff()
-{
-  digitalWrite(RELAY_PIN, HIGH);
-  pumpState = false;
 }
